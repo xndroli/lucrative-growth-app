@@ -1,0 +1,57 @@
+# Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
+
+client_id = "dfabfd461e5c73efb131d946d449b285"
+application_url = "https://turn14-distribution-app.com/"
+embedded = true
+name = "Turn 14 Distribution Integration"
+handle = "turn14-distribution-integration"
+
+[build]
+automatically_update_urls_on_dev = true
+dev_store_url = "https://your-dev-store.myshopify.com"
+include_config_on_deploy = true
+
+[webhooks]
+api_version = "2024-10"
+
+  [[webhooks.subscriptions]]
+  topics = [ "app/uninstalled" ]
+  uri = "/webhooks/app/uninstalled"
+
+  [[webhooks.subscriptions]]
+  topics = [ "customers/data_request" ]
+  uri = "/webhooks/customers/data_request"
+
+  [[webhooks.subscriptions]]
+  topics = [ "customers/redact" ]
+  uri = "/webhooks/customers/redact"
+
+  [[webhooks.subscriptions]]
+  topics = [ "shop/redact" ]
+  uri = "/webhooks/shop/redact"
+
+  [[webhooks.subscriptions]]
+  topics = [ "orders/create" ]
+  uri = "/webhooks/orders/create"
+
+  [[webhooks.subscriptions]]
+  topics = [ "orders/updated" ]
+  uri = "/webhooks/orders/updated"
+
+[access_scopes]
+# Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
+scopes = "write_products,read_products,write_inventory,read_inventory,read_orders,write_orders,read_customers,write_customers,read_analytics,write_price_rules,read_price_rules,write_discounts,read_discounts,write_themes,read_themes,write_script_tags,read_script_tags"
+
+[auth]
+redirect_urls = [ 
+  "https://turn14-distribution-app.com/api/auth",
+  "https://turn14-distribution-app.com/auth/callback"
+]
+
+[pos]
+embedded = false
+
+[app_proxy]
+url = "https://turn14-distribution-app.com"
+subpath = "apps"
+prefix = "turn14"

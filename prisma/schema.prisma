@@ -1,0 +1,394 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// Note that some adapters may set a maximum length for the String type by default, please ensure your strings are long
+// enough when changing adapters.
+// See https://www.prisma.io/docs/orm/reference/prisma-schema-reference#string for more information
+datasource db {
+  provider = "sqlite"
+  url      = "file:dev.sqlite"
+}
+
+model Session {
+  id            String    @id
+  shop          String
+  state         String
+  isOnline      Boolean   @default(false)
+  scope         String?
+  expires       DateTime?
+  accessToken   String
+  userId        BigInt?
+  firstName     String?
+  lastName      String?
+  email         String?
+  accountOwner  Boolean   @default(false)
+  locale        String?
+  collaborator  Boolean?  @default(false)
+  emailVerified Boolean?  @default(false)
+}
+
+model Turn14Config {
+  id              String   @id @default(cuid())
+  shop            String   @unique
+  apiKey          String
+  apiSecret       String?
+  environment     String   @default("production") // "sandbox" or "production"
+  isActive        Boolean  @default(true)
+  lastValidated   DateTime?
+  validationError String?
+  dealerCode      String?
+  selectedBrands  String?  // JSON string: Array of selected brand IDs
+  syncSettings    String?  // JSON string: Sync preferences and filters
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model Turn14SyncSchedule {
+  id              String   @id @default(cuid())
+  shop            String   
+  name            String   // "Inventory Sync", "Price Updates", etc.
+  syncType        String   // "inventory", "pricing", "products", "full"
+  frequency       String   // "hourly", "daily", "weekly", "manual"
+  schedule        String?  // Cron expression for complex schedules
+  isActive        Boolean  @default(true)
+  lastRun         DateTime?
+  nextRun         DateTime?
+  syncSettings    String?  // JSON string: Specific settings for this sync
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  syncJobs        Turn14SyncJob[]
+  
+  @@index([shop, isActive])
+}
+
+model Turn14SyncJob {
+  id            String   @id @default(cuid())
+  shop          String
+  scheduleId    String?
+  schedule      Turn14SyncSchedule? @relation(fields: [scheduleId], references: [id])
+  syncType      String   // "inventory", "pricing", "products", "full"
+  status        String   // "pending", "running", "completed", "failed"
+  startTime     DateTime?
+  endTime       DateTime?
+  totalItems    Int      @default(0)
+  processedItems Int     @default(0)
+  successItems  Int      @default(0)
+  failedItems   Int      @default(0)
+  errorMessage  String?
+  results       String?  // JSON string: Detailed results
+  createdAt     DateTime @default(now())
+  
+  @@index([shop, status, createdAt])
+}
+
+model Turn14ImportedProduct {
+  id                String   @id @default(cuid())
+  shop              String
+  turn14Sku         String
+  shopifyProductId  String
+  shopifyVariantId  String?
+  turn14Brand       String?
+  turn14Category    String?
+  originalPrice     Float?
+  currentPrice      Float?
+  priceMarkup       Float    @default(0)
+  inventoryQuantity Int      @default(0)
+  lastSynced        DateTime?
+  syncStatus        String   @default("active") // "active", "paused", "error"
+  syncErrors        String?  // JSON string: Array of recent sync errors
+  metaData          String?  // JSON string: Additional product metadata
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  // YMM Vehicle Compatibility
+  vehicleCompatibility Turn14VehicleCompatibility[]
+  
+  @@unique([shop, turn14Sku])
+  @@index([shop, syncStatus])
+  @@index([shop, turn14Brand])
+}
+
+model Turn14VehicleCompatibility {
+  id                String   @id @default(cuid())
+  shop              String
+  productId         String
+  product           Turn14ImportedProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+  
+  // Vehicle Information
+  year              Int
+  make              String
+  model             String
+  submodel          String?
+  engine            String?
+  engineSize        String?
+  fuelType          String?
+  transmission      String?
+  driveType         String?
+  bodyStyle         String?
+  
+  // Turn 14 specific data
+  turn14VehicleId   String?
+  turn14MmyId       String?
+  
+  // Compatibility notes and restrictions
+  notes             String?
+  restrictions      String?
+  isUniversal       Boolean  @default(false)
+  
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  @@unique([productId, year, make, model, submodel])
+  @@index([shop, year, make, model])
+  @@index([shop, make])
+  @@index([productId])
+}
+
+model Turn14VehicleDatabase {
+  id            String   @id @default(cuid())
+  year          Int
+  make          String
+  model         String
+  submodel      String?
+  engine        String?
+  engineSize    String?
+  fuelType      String?
+  transmission  String?
+  driveType     String?
+  bodyStyle     String?
+  
+  // Turn 14 identifiers
+  turn14VehicleId String?
+  turn14MmyId     String?
+  
+  // Metadata
+  isActive      Boolean  @default(true)
+  lastUpdated   DateTime @default(now())
+  
+  @@unique([year, make, model, submodel])
+  @@index([year, make, model])
+  @@index([make])
+  @@index([year])
+}
+
+model Turn14SyncLog {
+  id            String   @id @default(cuid())
+  shop          String
+  startTime     DateTime
+  endTime       DateTime
+  totalProducts Int
+  successfulSyncs Int
+  failedSyncs   Int
+  syncErrors    Turn14SyncError[]
+  createdAt     DateTime @default(now())
+}
+
+model Turn14SyncError {
+  id            String   @id @default(cuid())
+  syncLogId     String
+  syncLog       Turn14SyncLog  @relation(fields: [syncLogId], references: [id])
+  sku           String?
+  errorMessage  String
+  createdAt     DateTime @default(now())
+}
+
+// Vehicle Garage System Models
+model CustomerVehicleGarage {
+  id                String   @id @default(cuid())
+  shop              String
+  customerId        String   // Shopify Customer ID
+  customerEmail     String?
+  name              String?  // Optional garage name like "My Vehicles"
+  isDefault         Boolean  @default(true)
+  maxVehicles       Int      @default(5)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  vehicles          CustomerVehicle[]
+  
+  @@unique([shop, customerId])
+  @@index([shop, customerId])
+}
+
+model CustomerVehicle {
+  id                String   @id @default(cuid())
+  shop              String
+  garageId          String
+  garage            CustomerVehicleGarage @relation(fields: [garageId], references: [id], onDelete: Cascade)
+  
+  // Vehicle Details
+  year              Int
+  make              String
+  model             String
+  submodel          String?
+  engine            String?
+  engineSize        String?
+  fuelType          String?
+  transmission      String?
+  driveType         String?
+  bodyStyle         String?
+  
+  // Customer customization
+  nickname          String?  // "My Truck", "Wife's Car", etc.
+  color             String?
+  mileage           Int?
+  vin               String?
+  licensePlate      String?
+  
+  // Turn 14 integration
+  turn14VehicleId   String?
+  turn14MmyId       String?
+  
+  // Garage features
+  isPrimary         Boolean  @default(false)
+  isActive          Boolean  @default(true)
+  
+  // Timestamps
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  // Related features
+  maintenanceReminders VehicleMaintenanceReminder[]
+  priceAlerts          VehiclePriceAlert[]
+  purchaseHistory      VehiclePurchaseHistory[]
+  
+  @@index([shop, garageId])
+  @@index([shop, year, make, model])
+}
+
+model VehicleMaintenanceReminder {
+  id                String   @id @default(cuid())
+  shop              String
+  vehicleId         String
+  vehicle           CustomerVehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  
+  // Reminder details
+  type              String   // "oil_change", "tire_rotation", "brake_inspection", "custom"
+  title             String
+  description       String?
+  
+  // Scheduling
+  intervalType      String   // "mileage", "time", "both"
+  intervalMileage   Int?     // Miles between reminders
+  intervalMonths    Int?     // Months between reminders
+  
+  // Current status
+  lastCompleted     DateTime?
+  lastMileage       Int?
+  nextDue           DateTime?
+  nextMileage       Int?
+  
+  // Notifications
+  isActive          Boolean  @default(true)
+  emailNotifications Boolean @default(true)
+  advanceNotice     Int      @default(7) // Days before due date
+  
+  // Product recommendations
+  recommendedProducts String? // JSON array of Turn14 SKUs
+  
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  @@index([shop, vehicleId])
+  @@index([shop, nextDue])
+}
+
+model VehiclePriceAlert {
+  id                String   @id @default(cuid())
+  shop              String
+  vehicleId         String
+  vehicle           CustomerVehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  
+  // Product details
+  turn14Sku         String
+  productTitle      String
+  currentPrice      Float
+  targetPrice       Float
+  alertType         String   // "price_drop", "back_in_stock", "new_product"
+  
+  // Alert settings
+  isActive          Boolean  @default(true)
+  emailNotifications Boolean @default(true)
+  
+  // Tracking
+  lastChecked       DateTime?
+  alertTriggered    Boolean  @default(false)
+  triggeredAt       DateTime?
+  
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  @@index([shop, vehicleId])
+  @@index([shop, turn14Sku])
+  @@index([shop, isActive, lastChecked])
+}
+
+model VehiclePurchaseHistory {
+  id                String   @id @default(cuid())
+  shop              String
+  vehicleId         String
+  vehicle           CustomerVehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  
+  // Order details
+  shopifyOrderId    String
+  shopifyOrderNumber String?
+  turn14Sku         String
+  productTitle      String
+  quantity          Int
+  unitPrice         Float
+  totalPrice        Float
+  
+  // Purchase context
+  purchaseDate      DateTime
+  installationDate  DateTime?
+  warrantyExpires   DateTime?
+  
+  // Product categorization
+  category          String?  // "performance", "maintenance", "appearance", etc.
+  subcategory       String?
+  
+  // Customer feedback
+  rating            Int?     // 1-5 stars
+  review            String?
+  wouldRecommend    Boolean?
+  
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  @@index([shop, vehicleId])
+  @@index([shop, shopifyOrderId])
+  @@index([shop, purchaseDate])
+}
+
+// Vehicle Garage Analytics
+model VehicleGarageAnalytics {
+  id                String   @id @default(cuid())
+  shop              String
+  date              DateTime @default(now())
+  
+  // Usage metrics
+  totalGarages      Int      @default(0)
+  totalVehicles     Int      @default(0)
+  activeCustomers   Int      @default(0)
+  
+  // Engagement metrics
+  garageViews       Int      @default(0)
+  vehicleSearches   Int      @default(0)
+  compatibilityChecks Int    @default(0)
+  
+  // Conversion metrics
+  garageConversions Int      @default(0) // Purchases from garage users
+  averageOrderValue Float    @default(0)
+  
+  // Feature usage
+  maintenanceReminders Int   @default(0)
+  priceAlerts       Int      @default(0)
+  
+  @@unique([shop, date])
+  @@index([shop, date])
+}
